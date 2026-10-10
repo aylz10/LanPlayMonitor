@@ -527,7 +527,8 @@ def get_game_info(content_id: str, titles_map: dict[str, str]) -> dict[str, str]
     if normalized == UNKNOWN_ID:
         is_unknown = False
         game_name = "未知游戏"
-    icon = QUESTION_ICON if is_unknown else f"https://tinfoil.media/ti/{normalized or UNKNOWN_ID}/48/48"
+    icon = QUESTION_ICON if is_unknown else f"https://api.nlib.cc/nx/{normalized or UNKNOWN_ID}/icon/128/128"
+    # icon = QUESTION_ICON if is_unknown else f"https://tinfoil.media/ti/{normalized or UNKNOWN_ID}/48/48"
     return {"name": game_name, "icon": icon}
 
 # ============================================================================
