@@ -329,34 +329,41 @@
   // ============================================================
   // Room 卡片
   // ============================================================
-  function roomCard(room) {
-    const players = Array.isArray(room.players)?room.players:[];
-    const count = `${room.node_count||players.length}${room.node_count_max?' / '+room.node_count_max:''} 人`;
-    const gameVal = String(room.game||'');
-    const cid = String(room.content_id||'').toUpperCase();
-    const isUnknownId = cid===UNKNOWN_ID;
-    const isUnknown = gameVal.includes('未知游戏')&&!isUnknownId;
-    const iconUrl = room.game_icon||QUESTION_ICON;
-    const finalIcon = (isUnknown||!iconUrl||iconUrl==='')?QUESTION_ICON:iconUrl;
-    let iconHtml;
-    if(cid===UNKNOWN_ID) {
-      iconHtml = `<span class="room-icon" style="display:inline-block;width:22px;height:22px;border-radius:4px;background:#34495e;color:white;text-align:center;line-height:22px;font-weight:bold;font-size:14px;" title="${esc(room.game)}">?</span>`;
-    } else {
-      iconHtml = `<img src="${finalIcon}" alt="${esc(room.game)}" title="${esc(room.game)}" class="room-icon" loading="lazy" onerror="this.onerror=null;this.src='${QUESTION_ICON}'">`;
-    }
-    const gameDisplay = gameVal;
-    const canCopy = isUnknown&&!isUnknownId;
-    const gameTitle = canCopy?`点击复制游戏 ID: ${cid}`:gameDisplay;
-    const gameHtml = `<span class="game-name ${canCopy?'copy-game-id':''}" data-contentid="${esc(cid)}" data-isunknown="${canCopy?'true':'false'}" title="${esc(gameTitle)}">${esc(gameDisplay)}</span>`;
-    const hostName = room.host||'未知房间';
-    const hostHtml = `<span class="room-host-meta"><span class="host-icon-fixed">🏠</span><span class="host-name">${esc(hostName)}</span></span>`;
-    const rid = esc(room.id||'');
-    return `<div class="room-item" data-game="${esc(gameVal)}" data-room-id="${rid}">
-      <div class="room-top"><div class="room-game-left">${iconHtml}${gameHtml}</div></div>
-      <div class="room-meta"><span class="green">● 正在联机</span><span>|</span><span>${esc(count)}</span><span>|</span>${hostHtml}</div>
-      <div class="room-players">${players.map(p=>`<span class="player">${esc(p)}</span>`).join('')}</div>
-    </div>`;
+function roomCard(room) {
+  const players = Array.isArray(room.players)?room.players:[];
+  const count = `${room.node_count||players.length}${room.node_count_max?' / '+room.node_count_max:''} 人`;
+  const gameVal = String(room.game||'');
+  const cid = String(room.content_id||'').toUpperCase();
+  const isUnknownId = cid===UNKNOWN_ID;
+  const isUnknown = gameVal.includes('未知游戏')&&!isUnknownId;
+  const iconUrl = room.game_icon||QUESTION_ICON;
+  const finalIcon = (isUnknown||!iconUrl||iconUrl==='')?QUESTION_ICON:iconUrl;
+  let iconHtml;
+  if(cid===UNKNOWN_ID) {
+    iconHtml = `<span class="room-icon" style="display:inline-block;width:22px;height:22px;border-radius:4px;background:#34495e;color:white;text-align:center;line-height:22px;font-weight:bold;font-size:14px;" title="${esc(room.game)}">?</span>`;
+  } else {
+    iconHtml = `<img src="${finalIcon}" alt="${esc(room.game)}" title="${esc(room.game)}" class="room-icon" loading="lazy" onerror="this.onerror=null;this.src='${QUESTION_ICON}'">`;
   }
+  const gameDisplay = gameVal;
+  const canCopy = isUnknown&&!isUnknownId;
+  const gameTitle = canCopy?`点击复制游戏 ID: ${cid}`:gameDisplay;
+  const gameHtml = `<span class="game-name ${canCopy?'copy-game-id':''}" data-contentid="${esc(cid)}" data-isunknown="${canCopy?'true':'false'}" title="${esc(gameTitle)}">${esc(gameDisplay)}</span>`;
+  const hostName = room.host||'未知房间';
+  const hostHtml = `<span class="room-host-meta"><span class="host-icon-fixed">🏠</span><span class="host-name">${esc(hostName)}</span></span>`;
+  const rid = esc(room.id||'');
+  const serverId = esc(room.server_id||'');
+
+  const infoBtnHtml = `<button type="button" class="room-info-btn" data-room-id="${rid}" data-server-id="${serverId}" title="查看 raw 信息"
+    style="position:absolute;right:10px;top:50%;transform:translateY(-50%);width:34px;height:34px;border-radius:50%;border:1px solid var(--line);background:var(--card);color:var(--ink);font-size:16px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(0,0,0,.12);">🧾</button>`;
+
+  return `<div class="room-item" data-game="${esc(gameVal)}" data-room-id="${rid}" style="position:relative;padding-right:44px;">
+    ${infoBtnHtml}
+    <div class="room-top"><div class="room-game-left">${iconHtml}${gameHtml}</div></div>
+    <div class="room-meta"><span class="green">● 正在联机</span><span>|</span><span>${esc(count)}</span><span>|</span>${hostHtml}</div>
+    <div class="room-players">${players.map(p=>`<span class="player">${esc(p)}</span>`).join('')}</div>
+  </div>`;
+}
+
 
   // ============================================================
   // 筛选 & 渲染
@@ -652,6 +659,76 @@
     const t=e.target.closest('.copy-game-id');
     if(t&&t.dataset.isunknown==='true'){e.stopPropagation();const cid=t.dataset.contentid;if(cid&&cid!==UNKNOWN_ID)copyGameId(cid);}
   });
+  
+// ============================================================
+// 房间 raw 信息弹窗
+// ============================================================
+function ensureRoomInfoModal() {
+  let modal = document.getElementById('roomInfoModal');
+  if (modal) return modal;
+
+  modal = document.createElement('div');
+  modal.id = 'roomInfoModal';
+  modal.className = 'log-modal';
+  modal.innerHTML = `
+    <div class="log-box" style="max-width:560px;width:calc(100% - 32px);">
+      <div class="log-header">
+        <span>🧾 房间 raw 信息</span>
+        <button id="closeRoomInfoBtn" class="log-close">✕</button>
+      </div>
+      <div id="roomInfoContent" class="log-content" style="white-space:pre-wrap;font-size:12px;max-height:70vh;"></div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+
+  const closeBtn = modal.querySelector('#closeRoomInfoBtn');
+  closeBtn.addEventListener('click', () => modal.classList.remove('open'));
+  modal.addEventListener('click', e => { if (e.target === modal) modal.classList.remove('open'); });
+  return modal;
+}
+
+async function showRoomRawInfo(serverId, roomId) {
+  const modal = ensureRoomInfoModal();
+  const content = modal.querySelector('#roomInfoContent');
+  content.textContent = '正在加载 raw 信息...';
+  modal.classList.add('open');
+
+  try {
+    const url = `/api/room-raw?server_id=${encodeURIComponent(serverId)}&room_id=${encodeURIComponent(roomId)}`;
+    const r = await fetch(url, { cache: 'no-store' });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok || !d.ok) throw new Error(d.error || '请求失败');
+
+    const raw = d.room_raw?.raw || {};
+    const lines = [
+      `服务器: ${d.room_raw?.server_name || ''}`,
+      `房间 ID: ${d.room_raw?.room_id || roomId}`,
+      `数据来源: ${d.room_raw?.source || 'unknown'}`,
+      '',
+      'debug:',
+      JSON.stringify(raw, null, 2),
+    ];
+    content.textContent = lines.join('\n');
+    content.scrollTop = 0;
+  } catch (e) {
+    content.textContent = '加载 raw 信息失败: ' + e.message;
+  }
+}
+
+document.addEventListener('click', e => {
+  const t = e.target.closest('.room-info-btn');
+  if (!t) return;
+  e.preventDefault();
+  e.stopPropagation();
+  const roomId = t.dataset.roomId || '';
+  const serverId = t.dataset.serverId || '';
+  if (!roomId || !serverId) {
+    showToast('❌ 缺少房间或服务标识', 1500, false);
+    return;
+  }
+  showRoomRawInfo(serverId, roomId);
+}, true);
+
 
   // ============================================================
   // ============================================================
