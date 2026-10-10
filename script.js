@@ -442,31 +442,223 @@ function roomCard(room) {
   }
 
   // ============================================================
-  // 拖拽排序
+  // 拖拽排序 (移动端兼容修复版 - 解决“不在手指位置”的问题)
   // ============================================================
-  let dragSrc = null;
-  function initDragAndDrop(div) {
-    div.setAttribute('draggable','true');
-    div.addEventListener('dragstart',e=>{dragSrc=div;div.classList.add('dragging');e.dataTransfer.effectAllowed='move';});
-    div.addEventListener('dragend',()=>{div.classList.remove('dragging');dragSrc=null;document.querySelectorAll('.server-group').forEach(el=>el.classList.remove('drag-over'));});
-    div.addEventListener('dragover',e=>{e.preventDefault();if(div!==dragSrc)div.classList.add('drag-over');});
-    div.addEventListener('dragleave',()=>div.classList.remove('drag-over'));
-    div.addEventListener('drop',e=>{
-      e.preventDefault(); div.classList.remove('drag-over');
-      if(dragSrc&&dragSrc!==div) {
-        const list=$('serverList');
-        const all=[...list.querySelectorAll('.server-group')];
-        const di=all.indexOf(dragSrc), ti=all.indexOf(div);
-        if(di<ti) div.parentNode.insertBefore(dragSrc,div.nextSibling);
-        else div.parentNode.insertBefore(dragSrc,div);
-        const ids=[];
-        document.querySelectorAll('.server-group').forEach(el=>{const s=state.servers.find(x=>x.id===el.dataset.id);if(s)ids.push(s.id);});
-        state.servers=ids.map(id=>state.servers.find(s=>s.id===id)).filter(Boolean);
-        try{localStorage.setItem('lan_play_server_order',JSON.stringify(ids));}catch(e){}
-        fetch('/api/servers/reorder',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({order:ids})}).catch(()=>{});
-      }
+  let _dragState = {
+    active: false,
+    el: null,
+    placeholder: null,
+    offsetY: 0, // 手指距离卡片顶部的距离
+    offsetX: 0, // 手指距离卡片左侧的距离
+    startX: 0,
+    startY: 0
+  };
+  let _globalDragBound = false;
+
+  function _getTouchCoords(e) {
+    // 优先使用 changedTouches (当手指抬起或移动时最准确)
+    let t;
+    if (e.changedTouches && e.changedTouches.length > 0) {
+      t = e.changedTouches[0];
+    } else if (e.touches && e.touches.length > 0) {
+      t = e.touches[0];
+    } else if (e.clientX !== undefined) {
+      t = e;
+    } else {
+      return null;
+    }
+    return { x: t.clientX, y: t.clientY };
+  }
+
+  function _bindGlobalDrag() {
+    if (_globalDragBound) return;
+    _globalDragBound = true;
+
+    document.addEventListener('touchmove', function(e) {
+      if (!_dragState.active) return;
+      // 关键：阻止默认行为，防止页面滚动导致坐标系偏差
+      e.preventDefault(); 
+      _onMove(e);
+    }, { passive: false });
+
+    document.addEventListener('touchend', function(e) {
+      if (_dragState.active) _onEnd(e);
+    });
+
+    // 桌面端鼠标支持
+    document.addEventListener('mousemove', function(e) {
+      if (_dragState.active) _onMove(e);
+    });
+    document.addEventListener('mouseup', function(e) {
+      if (_dragState.active) _onEnd(e);
     });
   }
+
+  function _onStart(e, el) {
+    if (e.target.closest('button, input, select, textarea, .room-info-btn, .server-name, .server-address')) return;
+    
+    _bindGlobalDrag();
+    const c = _getTouchCoords(e);
+    if (!c) return;
+
+    const rect = el.getBoundingClientRect();
+    _dragState.active = true;
+    _dragState.el = el;
+    _dragState.startX = c.x;
+    _dragState.startY = c.y;
+    // 记录手指在卡片内的相对位置
+    _dragState.offsetX = c.x - rect.left;
+    _dragState.offsetY = c.y - rect.top;
+
+    // 创建占位符
+    const ph = document.createElement('div');
+    ph.className = 'drag-placeholder';
+    ph.style.height = el.offsetHeight + 'px';
+    el.parentNode.insertBefore(ph, el);
+    _dragState.placeholder = ph;
+
+    // 关键：使用 absolute 而不是 fixed，避免某些安卓 WebView 的 fixed 定位 Bug
+    // 但 absolute 需要相对于父元素，父元素必须是 relative
+    el.style.position = 'absolute'; 
+    el.style.zIndex = '9999';
+    el.style.width = rect.width + 'px';
+    el.style.height = rect.height + 'px';
+    el.style.left = rect.left + 'px';
+    el.style.top = rect.top + 'px';
+    el.style.transition = 'none';
+    el.style.boxShadow = '0 4px 12px rgba(0,0,0,0.3)';
+    
+    // 立即调用一次 move，确保位置正确
+    _onMove(e);
+  }
+
+  function _onMove(e) {
+    if (!_dragState.active) return;
+    const c = _getTouchCoords(e);
+    if (!c) return;
+
+    const el = _dragState.el;
+    const ph = _dragState.placeholder;
+
+    // 1. 移动卡片跟随手指
+    // 计算新的 top/left，基于手指位置减去偏移量
+    let newTop = c.y - _dragState.offsetY;
+    let newLeft = c.x - _dragState.offsetX;
+
+    // 限制在父容器水平范围内
+    const parentRect = el.parentNode.getBoundingClientRect();
+    if (newLeft < parentRect.left) newLeft = parentRect.left;
+    if (newLeft + el.offsetWidth > parentRect.right) newLeft = parentRect.right - el.offsetWidth;
+
+    el.style.top = newTop + 'px';
+    el.style.left = newLeft + 'px';
+
+    // 2. 计算占位符位置 (决定插入到哪里)
+    const siblings = Array.from(el.parentNode.children).filter(child => child !== el && child !== ph);
+    let insertBeforeEl = null;
+
+    for (let sib of siblings) {
+      const sibRect = sib.getBoundingClientRect();
+      const sibMidY = sibRect.top + (sibRect.height / 2);
+      
+      // 如果手指当前 Y 坐标 小于 兄弟元素的中线，则应该插到它前面
+      if (c.y < sibMidY) {
+        insertBeforeEl = sib;
+        break;
+      }
+    }
+
+    if (insertBeforeEl) {
+      // 如果占位符不在它前面，就移动占位符
+      if (insertBeforeEl.previousElementSibling !== ph) {
+        el.parentNode.insertBefore(ph, insertBeforeEl);
+      }
+    } else {
+      // 如果都没触发，放最后
+      if (el.parentNode.lastElementChild !== ph) {
+        el.parentNode.appendChild(ph);
+      }
+    }
+  }
+
+  function _onEnd(e) {
+    if (!_dragState.active) return;
+    const el = _dragState.el;
+    const ph = _dragState.placeholder;
+
+    // 恢复样式
+    el.style.position = '';
+    el.style.zIndex = '';
+    el.style.width = '';
+    el.style.height = '';
+    el.style.left = '';
+    el.style.top = '';
+    el.style.transition = '';
+    el.style.boxShadow = '';
+
+    // 将卡片放回占位符位置
+    el.parentNode.insertBefore(el, ph);
+    ph.remove();
+
+    // 保存顺序
+    const ids = Array.from(el.parentNode.querySelectorAll('.server-group')).map(node => node.dataset.id);
+    state.servers = ids.map(id => state.servers.find(s => s.id === id)).filter(Boolean);
+    try { localStorage.setItem('lan_play_server_order', JSON.stringify(ids)); } catch (err) {}
+    fetch('/api/servers/reorder', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ order: ids }) }).catch(() => {});
+
+    _dragState.active = false;
+    _dragState.el = null;
+    _dragState.placeholder = null;
+  }
+
+  function initMobileDragAndDrop(div) {
+    div.removeAttribute('draggable');
+    if (div._mobileDragBound) return;
+    div._mobileDragBound = true;
+
+    // 移动端：长按触发
+    div.addEventListener('touchstart', function(e) {
+      if (e.touches.length !== 1) return;
+      if (e.target.closest('button, input, .room-info-btn')) return;
+      
+      const startX = e.touches[0].clientX;
+      const startY = e.touches[0].clientY;
+      
+      const timer = setTimeout(() => {
+        // 触发拖动
+        _onStart(e, div);
+      }, 150);
+
+      const onMove = function(me) {
+        // 如果手指移动超过 10px，取消长按（视为普通滚动）
+        if (Math.abs(me.touches[0].clientX - startX) > 10 || Math.abs(me.touches[0].clientY - startY) > 10) {
+          clearTimeout(timer);
+          div.removeEventListener('touchmove', onMove);
+          div.removeEventListener('touchend', onEnd);
+          div.removeEventListener('touchcancel', onEnd);
+        }
+      };
+      const onEnd = function() {
+        clearTimeout(timer);
+        div.removeEventListener('touchmove', onMove);
+        div.removeEventListener('touchend', onEnd);
+        div.removeEventListener('touchcancel', onEnd);
+      };
+
+      div.addEventListener('touchmove', onMove, { passive: false });
+      div.addEventListener('touchend', onEnd);
+      div.addEventListener('touchcancel', onEnd);
+    }, { passive: false });
+
+    // 桌面端：鼠标直接拖动
+    div.addEventListener('mousedown', function(e) {
+      if (e.target.closest('button, input, .room-info-btn')) return;
+      _onStart(e, div);
+      e.preventDefault();
+    });
+  }
+
+
 
   // ============================================================
   // 服务器卡片渲染
@@ -536,7 +728,7 @@ function roomCard(room) {
         div.querySelector('.server-head').addEventListener('click',()=>{const id=div.dataset.id;if(state.expanded.has(id)){state.expanded.delete(id);div.classList.remove('open');}else{state.expanded.add(id);div.classList.add('open');}});
         const del=div.querySelector('.badge-delete'); if(del){del.style.cursor='pointer';del.addEventListener('click',e=>{e.stopPropagation();openDeleteConfirm(s.id,s.name);});}
         const edit=div.querySelector('.badge-edit'); if(edit){edit.style.cursor='pointer';edit.addEventListener('click',e=>{e.stopPropagation();openEditModal(s.id,s.name,div);});}
-        initDragAndDrop(div);
+        initMobileDragAndDrop(div)
         initChatForCard(s.id,div);
         existing.set(s.id,div);
         order.push(div);

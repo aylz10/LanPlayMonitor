@@ -965,3 +965,22 @@ html.dark .chat-msg-mine {
   background: var(--line);
   color: var(--ink);
 }
+
+/* 确保父容器相对定位，让 absolute 子元素参照它 */
+.server-list {
+  position: relative;
+}
+
+/* 占位符样式 */
+.drag-placeholder {
+  background: rgba(125, 175, 210, 0.15) !important;
+  border: 2px dashed var(--line, #ccc) !important;
+  border-radius: 12px !important;
+  margin: 8px 0 !important;
+}
+
+/* 移动端禁止选中文本，避免拖拽时出现蓝色选框 */
+.server-group {
+  -webkit-user-select: none;
+  user-select: none;
+}
