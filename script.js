@@ -619,7 +619,7 @@ function roomCard(room) {
     // 移动端：长按触发
     div.addEventListener('touchstart', function(e) {
       if (e.touches.length !== 1) return;
-      if (e.target.closest('button, input, .room-info-btn')) return;
+      if (e.target.closest('button, input, .room-info-btn, .badge-delete, .badge-edit')) return;
       
       const startX = e.touches[0].clientX;
       const startY = e.touches[0].clientY;
@@ -652,7 +652,7 @@ function roomCard(room) {
 
     // 桌面端：鼠标直接拖动
     div.addEventListener('mousedown', function(e) {
-      if (e.target.closest('button, input, .room-info-btn')) return;
+      if (e.target.closest('button, input, .room-info-btn, .badge-delete, .badge-edit')) return;
       _onStart(e, div);
       e.preventDefault();
     });
