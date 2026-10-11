@@ -94,7 +94,7 @@ _network_status_cache: dict[str, Any] = {
     "consecutive_failures": 0,
 }
 _network_status_lock = threading.Lock()
-NETWORK_CHECK_INTERVAL = 5
+NETWORK_CHECK_INTERVAL = int(os.getenv("LANP_NET_CHECK_INTERVAL", "300"))
 
 def _create_ssl_context() -> ssl.SSLContext:
     """创建宽松的 SSL 上下文（用于访问 HTTPS 远程资源）"""
@@ -104,6 +104,14 @@ def _create_ssl_context() -> ssl.SSLContext:
     return ctx
 
 def check_network_reachability() -> bool:
+    # 1) 先做轻量 TCP 探测（省电、省 CPU）
+    try:
+        with socket.create_connection(("www.baidu.com", 443), timeout=3):
+            return True
+    except OSError:
+        pass
+
+    # 2) TCP 不通再降级到原 HTTPS 探测
     req = urllib.request.Request(
         NETWORK_CHECK_URL,
         headers={"User-Agent": f"{APP_NAME}/1.0", "Accept": "text/html"}
@@ -142,7 +150,7 @@ MANUAL_SERVERS_FILE = str(SCRIPT_DIR / "servers_manual.json")
 SERVERS_FILE = os.getenv("SERVERS_FILE", "").strip() or MANUAL_SERVERS_FILE
 DEFAULT_SERVERS_FILE = MANUAL_SERVERS_FILE
 
-REMOTE_DOWNLOAD_INTERVAL = 30
+REMOTE_DOWNLOAD_INTERVAL = int(os.getenv("LANP_DOWNLOAD_INTERVAL", "900"))
 APP_NAME = "lan-play-monitor"
 CACHE_TTL = max(0.5, float(os.getenv("CACHE_TTL", "1.0")))
 REQUEST_TIMEOUT = max(1.0, float(os.getenv("REQUEST_TIMEOUT", "10.0")))
@@ -1266,6 +1274,7 @@ def scan_all(force: bool = False) -> Tuple[list[dict[str, Any]], bool]:
             fallback["latency_ms"] = None
             results[sid] = fallback
             all_cached = False
+    # warn(f"测试 results: {results}")
 
     return [results[s["id"]] for s in servers if s["id"] in results], all_cached
 
@@ -1418,7 +1427,13 @@ class MonitorHandler(BaseHTTPRequestHandler):
             # API: 日志
             if path == "/api/logs":
                 try:
-                    logs = log_capturer.get_logs_tail(200)
+                    _tail_raw = str(query.get("tail", "200"))
+                    try:
+                        tail = int(_tail_raw)
+                    except (ValueError, TypeError):
+                        tail = 200
+                    tail = max(10, min(200, tail))
+                    logs = log_capturer.get_logs_tail(tail)
                     with _download_status_lock:
                         ds = dict(_download_status)
                     lines = list(logs)

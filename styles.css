@@ -61,7 +61,7 @@ a{color:inherit;text-decoration:none}
 button{font:inherit}
 ::selection{background:var(--cyan);color:#fff}
 .page{width:min(1100px,calc(100%-32px));margin:auto;padding:24px 0 24px;animation:fadeIn .5s ease}
-@keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+/* @keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}} */
 .glass{border:1px solid rgba(255,255,255,.8);background:var(--card);box-shadow:var(--shadow);backdrop-filter:blur(15px);-webkit-backdrop-filter:blur(15px);transition:var(--transition)}
 html.dark .glass{border-color:rgba(255,255,255,.05)}
 @media (prefers-color-scheme: dark){:root:not(.light) .glass{border-color:rgba(255,255,255,.05)}}
@@ -84,7 +84,7 @@ html.dark .plugin-toast{background:linear-gradient(135deg,#2ee6c8,#1ab89a);color
 @media (max-width:600px){
   .plugin-toast{font-size:12.5px;padding:10px 18px;top:80px;white-space:normal;text-align:center;max-width:calc(100% - 32px)}
 }
-@keyframes pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.05)}}
+/* @keyframes pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.05)}} */
 
 .hero-actions{display:flex;align-items:center;gap:8px;flex-shrink:0}
 .theme-toggle,.icon-btn{border:0;width:38px;height:38px;border-radius:12px;background:#e1f1fa;color:var(--ink);cursor:pointer;display:grid;place-items:center;font-size:16px;transition:var(--transition);flex-shrink:0}
@@ -100,7 +100,7 @@ html.dark .theme-toggle:hover,html.dark .icon-btn:hover{background:rgba(255,255,
 .dot.online{background:#19c8ae;box-shadow:0 0 0 6px rgba(25,200,174,.15)}
 .dot.offline{background:#dc3048;box-shadow:0 0 0 6px rgba(220,48,72,.15);animation:none}
 .dot.checking{background:#e8820c;box-shadow:0 0 0 6px rgba(232,130,12,.12)}
-@keyframes pulse-dot{0%,100%{box-shadow:0 0 0 6px rgba(25,200,174,.13)}50%{box-shadow:0 0 0 10px rgba(25,200,174,.06)}}
+/* @keyframes pulse-dot{0%,100%{box-shadow:0 0 0 6px rgba(25,200,174,.13)}50%{box-shadow:0 0 0 10px rgba(25,200,174,.06)}} */
 
 .scan{display:flex;align-items:center;gap:10px;color:var(--muted);font-weight:700;font-size:13px;flex-shrink:0;justify-content:flex-end}
 .refresh{border:0;border-radius:12px;padding:10px 18px;background:#e1f1fa;color:var(--ink);font-weight:750;cursor:pointer;font-size:13.5px;transition:var(--transition);display:inline-flex;align-items:center;gap:6px}
@@ -111,7 +111,7 @@ html.dark .theme-toggle:hover,html.dark .icon-btn:hover{background:rgba(255,255,
 .refresh.loading .spinner{display:block}
 .refresh.loading .refresh-text::before{content:'刷新中'}
 .refresh.loading .refresh-text span{display:none}
-@keyframes spin{to{transform:rotate(360deg)}}
+/* @keyframes spin{to{transform:rotate(360deg)}} */
 html.dark .refresh{background:rgba(255,255,255,.08);color:var(--ink)}
 html.dark .refresh:hover{background:rgba(255,255,255,.15)}
 @media (prefers-color-scheme: dark){:root:not(.light) .refresh{background:rgba(255,255,255,.08);color:var(--ink)}:root:not(.light) .refresh:hover{background:rgba(255,255,255,.15)}}
@@ -265,7 +265,7 @@ html.dark .server-head:hover{background:rgba(255,255,255,.03)}
 .server-status-dot.online{background:#19c8ae;box-shadow:0 0 0 4px rgba(25,200,174,.15);animation:server-pulse-online 2s ease-in-out infinite}
 .server-status-dot.offline{background:#dc3048;box-shadow:0 0 0 4px rgba(220,48,72,.12);animation:none}
 .server-status-dot.checking{background:#e8820c;box-shadow:0 0 0 4px rgba(232,130,12,.12);animation:pulse-dot 1.5s ease-in-out infinite}
-@keyframes server-pulse-online{0%,100%{box-shadow:0 0 0 4px rgba(25,200,174,.15),0 0 0 0 rgba(25,200,174,.25)}50%{box-shadow:0 0 0 8px rgba(25,200,174,.08),0 0 12px 4px rgba(25,200,174,.2)}}
+/* @keyframes server-pulse-online{0%,100%{box-shadow:0 0 0 4px rgba(25,200,174,.15),0 0 0 0 rgba(25,200,174,.25)}50%{box-shadow:0 0 0 8px rgba(25,200,174,.08),0 0 12px 4px rgba(25,200,174,.2)}} */
 
 .server-info {
   flex: 1;
@@ -547,10 +547,10 @@ html.dark .game-name {
 }
 
 /* 双副本滚动动画 */
-@keyframes marquee-dual {
+/* @keyframes marquee-dual {
   0% { transform: translateX(0); }
   100% { transform: translateX(-50%); }
-}
+} */
 
 /* 玩家列表 */
 .room-players{display:flex;gap:5px;flex-wrap:wrap;margin-top:8px}
@@ -568,7 +568,7 @@ html.dark .room-players .player{background:rgba(61,217,184,.12);color:#3dd9b8}
 .skeleton{height:60px;border-radius:14px;background:linear-gradient(100deg,#f0f6fa 20%,#e2eef5 38%,#f0f6fa 56%);background-size:300% 100%;animation:shine 1.4s infinite;margin-top:8px}
 html.dark .skeleton{background:linear-gradient(100deg,#1a2530 20%,#243240 38%,#1a2530 56%);background-size:300% 100%}
 @media (prefers-color-scheme: dark){:root:not(.light) .skeleton{background:linear-gradient(100deg,#1a2530 20%,#243240 38%,#1a2530 56%);background-size:300% 100%}}
-@keyframes shine{to{background-position-x:-100%}}
+/* @keyframes shine{to{background-position-x:-100%}} */
 
 .filters{display:flex;gap:8px;overflow-x:auto;padding:14px 0 4px;scrollbar-width:none}
 .filters::-webkit-scrollbar{display:none}
@@ -983,4 +983,13 @@ html.dark .chat-msg-mine {
 .server-group {
   -webkit-user-select: none;
   user-select: none;
+}
+
+/* ===== 功耗优化：降低 GPU 常驻负载 ===== */
+.glass{backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);}
+@media (prefers-reduced-motion: reduce){
+  .logo,.dot{animation:none !important;}
+}
+@media (prefers-reduced-transparency: reduce){
+  .glass{backdrop-filter:none;-webkit-backdrop-filter:none;}
 }

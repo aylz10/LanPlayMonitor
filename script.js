@@ -32,6 +32,30 @@
   };
 
   // ============================================================
+  // 可配置功耗 / 轮询设置（localStorage 持久化）【新增】
+  // ============================================================
+  const SETTINGS_KEY = 'lan_play_settings';
+  const SETTINGS_DEFAULTS = {
+    pollSeconds: 10,
+    netSeconds: 60,
+    logSeconds: 15,
+    logLines: 50
+  };
+  function loadSettings() {
+    try {
+      const raw = localStorage.getItem(SETTINGS_KEY);
+      if (raw) return Object.assign({}, SETTINGS_DEFAULTS, JSON.parse(raw));
+    } catch (e) {}
+    return Object.assign({}, SETTINGS_DEFAULTS);
+  }
+  const settings = loadSettings();
+  function saveSettings(patch) {
+    Object.assign(settings, patch);
+    try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch (e) {}
+  }
+
+
+  // ============================================================
   // Toast 通知
   // ============================================================
   let _toastEl = null;
@@ -249,7 +273,7 @@
   });
 
   // ============================================================
-  // 网络检测
+  // 网络检测【已改：间隔可配置 + 可见性门控】
   // ============================================================
   const netDot = $('netDot');
   let netCheckTimer = null;
@@ -272,25 +296,43 @@
       netDot.className=''; netDot.classList.add('offline'); netDot.title='网络检测失败：'+e.message; lastNetState='offline';
     }
   }
-  function scheduleNetworkCheck() { if(netCheckTimer) clearInterval(netCheckTimer); netCheckTimer=setInterval(checkNetwork,2000); }
-  checkNetwork(); scheduleNetworkCheck();
+  function startNetworkCheck() {
+    if(netCheckTimer) clearInterval(netCheckTimer);
+    const sec = Math.max(10, Math.min(600, parseInt(settings.netSeconds || 60, 10) || 60));
+    netCheckTimer = setInterval(() => { if(!document.hidden) checkNetwork(false); }, sec * 1000);
+  }
+  function stopNetworkCheck() { if(netCheckTimer){clearInterval(netCheckTimer);netCheckTimer=null;} }
+  checkNetwork(); startNetworkCheck();
 
   // ============================================================
-  // 日志模态框
+  // 日志模态框【已改：间隔/行数可配置】
   // ============================================================
   const logModal = $('logModal');
   const logContent = $('logContent');
   let logInterval = null;
   async function fetchLogs() {
     try {
-      const r = await fetch('/api/logs',{cache:'no-store'});
-      const d = await r.json().catch(()=>({}));
-      if(d.ok && Array.isArray(d.logs)) { logContent.textContent = d.logs.join('\n'); logContent.scrollTop=logContent.scrollHeight; }
-    } catch(e) { logContent.textContent='加载日志失败: '+e.message; }
+      const lines = Math.max(10, Math.min(200, parseInt(settings.logLines || 50, 10) || 50));
+      const url = '/api/logs?tail=' + lines;
+      const r = await fetch(url, { cache: 'no-store' });
+      const d = await r.json().catch(() => ({}));
+      if (d.ok && Array.isArray(d.logs)) {
+        logContent.textContent = d.logs.join('\n');
+        logContent.scrollTop = logContent.scrollHeight;
+      }
+    } catch(e) {
+      logContent.textContent = '加载日志失败: ' + e.message;
+    }
   }
-  $('openLogModalBtn').addEventListener('click', ()=>{logModal.classList.add('open');fetchLogs();if(logInterval)clearInterval(logInterval);logInterval=setInterval(fetchLogs,2000);});
-  $('closeLogBtn').addEventListener('click', ()=>{logModal.classList.remove('open');if(logInterval)clearInterval(logInterval);});
-  logModal.addEventListener('click', e=>{if(e.target===logModal){logModal.classList.remove('open');if(logInterval)clearInterval(logInterval);}});
+  $('openLogModalBtn').addEventListener('click', ()=>{
+    logModal.classList.add('open');
+    fetchLogs();
+    if(logInterval) clearInterval(logInterval);
+    const sec = Math.max(3, Math.min(120, parseInt(settings.logSeconds || 15, 10) || 15));
+    logInterval = setInterval(fetchLogs, sec * 1000);
+  });
+  $('closeLogBtn').addEventListener('click', ()=>{logModal.classList.remove('open');if(logInterval)clearInterval(logInterval);logInterval=null;});
+  logModal.addEventListener('click', e=>{if(e.target===logModal){logModal.classList.remove('open');if(logInterval)clearInterval(logInterval);logInterval=null;}});
 
   // ============================================================
   // 辅助渲染函数
@@ -825,12 +867,14 @@ function roomCard(room) {
           });
           const end = performance.now();
           server.client_latency = Math.round(end - start);
+          //showToast('↺ 测试延迟：'+server.client_latency+'', 1500, true);
         } catch (err) {
           server.client_latency = -1;
         }
         return server;
       });
       await Promise.all(latencyPromises);
+      //showToast('↺ 测试', 1500, true);
 
       localStorage.setItem('lan_play_cache_servers',JSON.stringify(state.servers));
       localStorage.setItem('lan_play_cache_rooms',JSON.stringify(state.rooms));
@@ -848,18 +892,61 @@ function roomCard(room) {
     try{const c=localStorage.getItem('lan_play_server_order');if(!c)return false;const arr=JSON.parse(c);if(!Array.isArray(arr)||!arr.length)return false;const map={};state.servers.forEach(s=>{map[s.id]=s;});const ordered=arr.map(id=>map[id]).filter(Boolean);state.servers.forEach(s=>{if(!arr.includes(s.id))ordered.push(s);});if(ordered.length){state.servers=ordered;state._defaultOrder=state.servers.map(s=>({id:s.id}));return true;}}catch(e){}return false;
   }
 
-  function startPolling() {
-    if(state.pollInterval) clearInterval(state.pollInterval);
-    load(false);
-    state.pollInterval=setInterval(()=>{if(!document.hidden)load(false);},1000);
-  }
+  // ============================================================
+  // 主轮询【已改：间隔可配置 + 失败指数退避】
+  // ============================================================
+let _pollFail = 0;
+let _pollTimer = null;
+
+function startPolling() {
+  if (_pollTimer) { clearInterval(_pollTimer); _pollTimer = null; }
+  _pollFail = 0;
+
+  const baseSec = Math.max(1, Math.min(300, parseInt(settings.pollSeconds || 10, 10) || 10));
+  const base = baseSec * 1000;
+
+  const doPoll = async () => {
+    if (document.hidden) return;
+    try {
+      load(false);
+      //showToast('✅ 测试', 1500, true);
+      _pollFail = 0;                 // 成功 → 重置
+    } catch (e) {
+      _pollFail++;                   // 失败 → 计数
+    }
+    // 按当前失败次数决定下一次间隔（指数退避，最多 10 倍）
+    const mult = _pollFail > 3 ? Math.min(10, Math.pow(2, _pollFail - 3)) : 1;
+    const nextDelay = base * mult;
+
+    // 每次轮询后重新计算下一次间隔（实现真正的退避）
+    _pollTimer = setTimeout(() => doPoll(), nextDelay);
+  };
+
+  doPoll(); // 立即先执行一次
+}
+
+// 停止轮询（供 visibilitychange / 重置设置调用）
+function stopPolling() {
+  if (_pollTimer) { clearTimeout(_pollTimer); _pollTimer = null; }
+}
+
+
+
+
 
   // ============================================================
-  // 可见性变化
+  // 可见性变化【已改：同时暂停/恢复网络定时器，降低后台功耗】
   // ============================================================
   document.addEventListener('visibilitychange',()=>{
-    if(document.hidden){if(state.pollInterval){clearInterval(state.pollInterval);state.pollInterval=null;}}
-    else{startPolling();setTimeout(reconnectChat,500);}
+    if(document.hidden){
+      if(state.pollInterval){clearInterval(state.pollInterval);state.pollInterval=null;}
+      stopNetworkCheck();
+    } else {
+      _pollFail = 0;
+      startPolling();
+      startNetworkCheck();
+      setTimeout(reconnectChat,500);
+    }
   });
 
   // 下拉刷新
@@ -943,6 +1030,80 @@ document.addEventListener('click', e => {
   }
   showRoomRawInfo(serverId, roomId);
 }, true);
+
+
+
+// ============================================================
+// 设置模态框（直接填数值，localStorage 持久化）
+// ============================================================
+const settingsModal = $('settingsModal');
+const closeSettingsBtn = $('closeSettingsBtn');
+const settingsPollValue = $('settingsPollValue');
+const settingsNetValue = $('settingsNetValue');
+const settingsLogValue = $('settingsLogValue');
+const settingsLogLinesValue = $('settingsLogLinesValue');
+const settingsDoneBtn = $('settingsDoneBtn');
+const settingsResetBtn = $('settingsResetBtn');
+
+function clampNum(value, min, max, fallback) {
+  const n = parseInt(value, 10);
+  if (Number.isNaN(n)) return fallback;
+  return Math.max(min, Math.min(max, n));
+}
+
+function _applySettingsToInputs() {
+  settingsPollValue.value = settings.pollSeconds ?? 10;
+  settingsNetValue.value = settings.netSeconds ?? 60;
+  settingsLogValue.value = settings.logSeconds ?? 15;
+  settingsLogLinesValue.value = settings.logLines ?? 50;
+}
+
+$('forceRefreshBtn').addEventListener('click', async () => {
+  showToast('⏳ 正在刷新服务器与延迟...', 2000, true);
+  await load(true);
+  showToast('✅ 刷新完成', 2000, true);
+});
+
+$('openSettingsBtn').addEventListener('click', () => {
+  _applySettingsToInputs();
+  settingsModal.classList.add('open');
+});
+
+closeSettingsBtn.addEventListener('click', () => settingsModal.classList.remove('open'));
+settingsModal.addEventListener('click', e => {
+  if (e.target === settingsModal) settingsModal.classList.remove('open');
+});
+
+settingsDoneBtn.addEventListener('click', () => {
+  const patch = {
+    pollSeconds: clampNum(settingsPollValue.value, 1, 300, 10),
+    netSeconds:  clampNum(settingsNetValue.value, 10, 600, 60),
+    logSeconds:  clampNum(settingsLogValue.value, 3, 120, 15),
+    logLines:    clampNum(settingsLogLinesValue.value, 10, 200, 50)
+  };
+  saveSettings(patch);
+
+  // 立即按新数值重建定时器
+  _pollFail = 0;
+  startPolling();
+  startNetworkCheck();
+
+  showToast('✅ 设置已保存并生效', 1500, true);
+  settingsModal.classList.remove('open');
+});
+
+settingsResetBtn.addEventListener('click', () => {
+  localStorage.removeItem(SETTINGS_KEY);
+  Object.assign(settings, SETTINGS_DEFAULTS);
+  _applySettingsToInputs();
+
+  _pollFail = 0;
+  startPolling();
+  startNetworkCheck();
+
+  showToast('↺ 已恢复默认设置', 1500, true);
+});
+
 
 
   // ============================================================

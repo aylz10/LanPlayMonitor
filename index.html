@@ -20,6 +20,8 @@
       <button id="dpiToggleBtn" class="icon-btn" title="调节界面缩放 (DPI)">🔍</button>
       <button id="openPublicChatBtn" class="icon-btn" title="公共聊天">💬</button>
       <button id="themeToggleBtn" class="theme-toggle" title="切换浅色/深色主题">🌙</button>
+      <button id="openSettingsBtn" class="theme-toggle" title="功耗与轮询设置">⚙️</button>
+      <button id="forceRefreshBtn" class="theme-toggle" title="立即刷新并测试延迟">⚡</button>
     </div>
     <div class="scan">
       <i id="netDot" class="dot" title="检测网络连接中..."></i>
@@ -137,6 +139,50 @@
           <span id="dpiLabel">100%</span>
           <input type="range" id="dpiSlider" min="60" max="150" value="100" step="5">
           <button id="dpiResetBtn" class="dpi-reset-btn">恢复默认 (100%)</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 功耗与轮询设置模态框 -->
+  <div id="settingsModal" class="custom-modal">
+    <div class="custom-modal-box" style="width:min(500px,calc(100% - 32px));">
+      <div class="custom-modal-header">
+        <span>⚙️ 功耗与轮询设置</span>
+        <button id="closeSettingsBtn" class="custom-modal-close">✕</button>
+      </div>
+      <div class="custom-modal-body">
+        <p style="margin:0 0 14px;font-size:13px;color:var(--muted);line-height:1.6;">
+          直接填入数值。数值越大，安卓端网络请求越少、功耗越低；数值越小，界面刷新越实时。
+        </p>
+
+        <div class="form-row" style="margin-bottom:14px;">
+          <label style="display:block;font-size:13.5px;font-weight:700;margin-bottom:6px;">📡 快照轮询间隔（秒）</label>
+          <input type="number" id="settingsPollValue" min="1" max="300" step="1" placeholder="例如 10" style="width:100%;">
+          <small style="color:var(--muted);font-size:12px;margin-top:6px;">建议范围：1~300 秒。默认 10 秒。</small>
+        </div>
+
+        <div class="form-row" style="margin-bottom:14px;">
+          <label style="display:block;font-size:13.5px;font-weight:700;margin-bottom:6px;">🌐 网络检测间隔（秒）</label>
+          <input type="number" id="settingsNetValue" min="10" max="600" step="1" placeholder="例如 60" style="width:100%;">
+          <small style="color:var(--muted);font-size:12px;margin-top:6px;">建议范围：10~600 秒。默认 60 秒。</small>
+        </div>
+
+        <div class="form-row" style="margin-bottom:14px;">
+          <label style="display:block;font-size:13.5px;font-weight:700;margin-bottom:6px;">🖥️ 日志刷新间隔（秒）</label>
+          <input type="number" id="settingsLogValue" min="3" max="120" step="1" placeholder="例如 15" style="width:100%;">
+          <small style="color:var(--muted);font-size:12px;margin-top:6px;">建议范围：3~120 秒。默认 15 秒。</small>
+        </div>
+
+        <div class="form-row" style="margin-bottom:18px;">
+          <label style="display:block;font-size:13.5px;font-weight:700;margin-bottom:6px;">📄 日志拉取行数</label>
+          <input type="number" id="settingsLogLinesValue" min="10" max="200" step="1" placeholder="例如 50" style="width:100%;">
+          <small style="color:var(--muted);font-size:12px;margin-top:6px;">建议范围：10~200 行。默认 50 行。</small>
+        </div>
+
+        <div style="display:flex;gap:10px;">
+          <button id="settingsResetBtn" style="flex:1;border:0;border-radius:12px;padding:11px;background:rgba(125,175,210,.15);color:var(--ink);font-weight:700;cursor:pointer;font-size:14px;transition:var(--transition);">恢复默认</button>
+          <button id="settingsDoneBtn" style="flex:1;border:0;border-radius:12px;padding:11px;background:var(--cyan);color:#fff;font-weight:800;cursor:pointer;font-size:14px;transition:var(--transition);">保存</button>
         </div>
       </div>
     </div>
