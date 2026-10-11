@@ -298,8 +298,8 @@
   const statusDot = s => s==='online'?'online':s==='checking'?'checking':'offline';
 
   function latencyHTML(s) {
-    if(s.status!=='online'||s.error||s.latency_ms==null||s.latency_ms<0) return '<b class="latency-badge error">-</b>';
-    const lat = s.latency_ms;
+    if(s.status!=='online'||s.error||s.client_latency==null||s.client_latency<0) return '<b class="latency-badge error">-</b>';
+    const lat = s.client_latency;
     return lat<=300 ? `<b class="latency-badge fast">${lat}ms</b>` : `<b class="latency-badge slow">${lat}ms</b>`;
   }
 
@@ -793,7 +793,7 @@ function roomCard(room) {
     if(document.hidden&&!force) return;
     if(state.loading&&!force) return;
     if(!navigator.onLine) {
-      state.servers.forEach(s=>{s.status='offline';s.latency_ms=null;s.error='网络已断开';});
+      state.servers.forEach(s=>{s.status='offline';s.client_latency=null;s.error='网络已断开';});
       render(); checkNetwork(true); state.loading=false; return;
     }
     state.loading=true;
@@ -809,6 +809,29 @@ function roomCard(room) {
       state.servers=Array.isArray(d.servers)?d.servers:[];
       state.rooms=Array.isArray(d.rooms)?d.rooms:[];
       if(ignoreSaved){state._defaultOrder=state.servers.map(s=>({id:s.id}));}else{const loaded=loadSavedOrder();if(!loaded&&state._defaultOrder===null)state._defaultOrder=state.servers.map(s=>({id:s.id}));}
+
+      const latencyPromises = state.servers.map(async (server) => {
+        if(server.status!=='online') {
+          server.client_latency = null;
+          return server;
+        }
+        const start = performance.now();
+        try {
+          await fetch(`http://${server.host}:${server.port}/`, {
+            method: 'HEAD',
+            mode: 'no-cors',
+            cache: 'no-store',
+            signal: AbortSignal.timeout(3000)
+          });
+          const end = performance.now();
+          server.client_latency = Math.round(end - start);
+        } catch (err) {
+          server.client_latency = -1;
+        }
+        return server;
+      });
+      await Promise.all(latencyPromises);
+
       localStorage.setItem('lan_play_cache_servers',JSON.stringify(state.servers));
       localStorage.setItem('lan_play_cache_rooms',JSON.stringify(state.rooms));
       await new Promise(res=>requestAnimationFrame(res));
@@ -816,7 +839,7 @@ function roomCard(room) {
       if(state.goEasyReady) forceSubscribeAll();
       checkNetwork(true);
     } catch(e) {
-      state.servers.forEach(s=>{s.status='offline';s.latency_ms=null;s.error='网络连接失败';});
+      state.servers.forEach(s=>{s.status='offline';s.client_latency=null;s.error='网络连接失败';});
       render(); checkNetwork(true);
     } finally { state.loading=false; }
   }
