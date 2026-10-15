@@ -3756,6 +3756,7 @@ html:not(.dark) {
   <section class="hero glass">
     <div class="brand-area" id="brandArea">
       <!-- 顺序：主题切换 → 公共聊天 → 在线成员 → 日志 → 添加服务器 → 重置排序 → DPI → 更新 → 安装应用 → 自动展开 → 插件 → 环境变量设置 -->
+      <button id="forceRefreshBtn" class="theme-toggle" title="立即刷新并测试延迟">⚡</button>
       <button id="themeToggleBtn" class="theme-toggle" title="切换浅色/深色主题">🌙</button>
       <button id="openPublicChatBtn" class="icon-btn public-chat-btn" title="公共聊天">
         <span class="public-chat-icon">💬</span>
@@ -4664,6 +4665,12 @@ html:not(.dark) {
       if (!themeToggleBtn) return false;
       if (themeToggleBtn.dataset.__themeBound === "1") return true;
       themeToggleBtn.dataset.__themeBound = "1";
+      
+      $('forceRefreshBtn').addEventListener('click', async () => {
+        showToast('⏳ 正在刷新服务器与延迟...', 2000, true);
+        await load(true);
+        showToast('✅ 刷新完成', 2000, true);
+      });
 
       // 点击：light -> dark -> 跟随系统 三态
       themeToggleBtn.addEventListener("click", (e) => {
@@ -5125,6 +5132,7 @@ html:not(.dark) {
     // ===== 导航栏图标长按拖动排序 =====
     const NAV_ORDER_KEY = "lan_play_nav_order";
     const DEFAULT_NAV_ORDER = [
+      "forceRefreshBtn",
       "themeToggleBtn",
       "openPublicChatBtn",
       "onlineMembersBtn",
@@ -5747,11 +5755,11 @@ html:not(.dark) {
       if (
         s.status !== "online" ||
         s.error ||
-        s.latency_ms == null ||
-        s.latency_ms < 0
+        s.client_latency == null ||
+        s.client_latency < 0
       )
         return '<b class="latency-badge error">-</b>';
-      const lat = s.latency_ms;
+      const lat = s.client_latency;
       if (lat <= 300) return `<b class="latency-badge fast">${lat}ms</b>`;
       return `<b class="latency-badge slow">${lat}ms</b>`;
     }
@@ -13954,7 +13962,7 @@ html:not(.dark) {
       if (!navigator.onLine) {
         state.servers.forEach((s) => {
           s.status = "offline";
-          s.latency_ms = null;
+          s.client_latency = null;
           s.error = "网络已断开";
         });
         render();
@@ -14017,6 +14025,29 @@ html:not(.dark) {
           }
         }
 
+      const latencyPromises = state.servers.map(async (server) => {
+        if(server.status!=='online') {
+          server.client_latency = null;
+          return server;
+        }
+        const start = performance.now();
+        try {
+          await fetch(`http://${server.host}:${server.port}/`, {
+            method: 'HEAD',
+            mode: 'no-cors',
+            cache: 'no-store',
+            signal: AbortSignal.timeout(3000)
+          });
+          const end = performance.now();
+          server.client_latency = Math.round(end - start);
+        } catch (err) {
+          server.client_latency = -1;
+        }
+        return server;
+      });
+      await Promise.all(latencyPromises);
+
+
         localStorage.setItem(
           "lan_play_cache_servers",
           JSON.stringify(state.servers),
@@ -14040,7 +14071,7 @@ html:not(.dark) {
       } catch (e) {
         state.servers.forEach((s) => {
           s.status = "offline";
-          s.latency_ms = null;
+          s.client_latency = null;
           s.error = "网络连接失败";
         });
         render();
