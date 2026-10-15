@@ -361,14 +361,14 @@ MAX_JSON_BODY_BYTES = 2 * 1024 * 1024
 GC_INTERVAL = max(30, int(os.getenv("GC_INTERVAL", "120")))
 
 # 可选代理前缀（为空则直连，失败自动重试直连）# 例：https://v6.gh-proxy.org 或 https://gh-proxy.com
-REMOTE_UPDATE_PROXY = os.getenv("REMOTE_UPDATE_PROXY", "https://v6.gh-proxy.org").strip().rstrip("/")
+REMOTE_UPDATE_PROXY = os.getenv("REMOTE_UPDATE_PROXY", "ghfast.top").strip().rstrip("/")
 # 远程资源原始地址（直连）；实际请求时若 REMOTE_UPDATE_PROXY 非空则优先走 代理/原始URL
 REMOTE_CHINESE_DB_URL = "https://raw.githubusercontent.com/jieluojun/LanPlayMonitor/refs/heads/main/chinese_db.json"
 REMOTE_SERVERS_URL = "https://raw.githubusercontent.com/jieluojun/LanPlayMonitor/refs/heads/main/servers.json"
 
 # 前后端远程更新地址（同上，直连原始地址）
-REMOTE_FRONTEND_URL = "https://raw.githubusercontent.com/jieluojun/LanPlayMonitor/refs/heads/main/script.js"
-REMOTE_BACKEND_URL = "https://raw.githubusercontent.com/jieluojun/LanPlayMonitor/refs/heads/main/main.py"
+REMOTE_FRONTEND_URL = "https://raw.githubusercontent.com/aylz10/LanPlayMonitor/refs/heads/new/script.js"
+REMOTE_BACKEND_URL = "https://raw.githubusercontent.com/aylz10/LanPlayMonitor/refs/heads/new/main.py"
 LOCAL_FRONTEND_FILE = str(SCRIPT_DIR / "script.js")
 LOCAL_BACKEND_FILE = str(SCRIPT_DIR / "main.py")
 
@@ -1191,8 +1191,8 @@ ENV_CONFIG_FILE = str(SCRIPT_DIR / "env.json")
 # 默认配置不含任何服务值；可通过环境变量预置，或在网页设置中手动填写。
 DEFAULT_ENV_CONFIG: dict[str, Any] = {
     "goeasy": {
-        "appkey": os.getenv("GOEASY_APPKEY", "").strip(),
-        "host": os.getenv("GOEASY_HOST", "").strip(),
+        "appkey": os.getenv("GOEASY_APPKEY", "BC-e891108825ab43fb97dabe3327478e30").strip(),
+        "host": os.getenv("GOEASY_HOST", "hangzhou.goeasy.io").strip(),
         "force_tls": True,
     },
     "storage": {
@@ -2059,6 +2059,13 @@ MAX_KEEPALIVE_ROOMS_PER_SERVER = int(os.getenv("MAX_KEEPALIVE_ROOMS", "300"))
 _room_keepalive: dict[str, dict[str, list[Any]]] = {}
 _room_keepalive_lock = threading.Lock()
 
+# 房间 raw 信息缓存：(server_id, room_id) -> {raw, last_seen}
+# 供 /api/room-raw 查询；TTL 与 keepalive 一致，5 轮未扫到自动过期。
+ROOM_RAW_CACHE: dict[tuple[str, str], dict[str, Any]] = {}
+ROOM_RAW_CACHE_LOCK = threading.Lock()
+ROOM_RAW_CACHE_TTL = 15.0  # 秒；比 keepalive(5轮)略宽，避免刚过期就查不到
+
+
 
 _RE_INDEX_ID = re.compile(r"^(.*)-(\d+)$")
 
@@ -2258,6 +2265,155 @@ _QUESTION_SVG = ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48">'
                  'font-family="sans-serif" font-weight="bold">?</text></svg>')
 QUESTION_ICON = "data:image/svg+xml," + urllib.parse.quote(_QUESTION_SVG)
 UNKNOWN_ID = "FFFFFFFFFFFFFFFF"
+
+
+# ============================================================================
+# SECTION 7b · 房间数据清洗（advertiseData 识别真实游戏）
+# ============================================================================
+
+def hex_to_ascii(hex_str: str) -> str:
+    """将 16 进制字符串解码为 ASCII（对应 rooms.js 的 hexToAscii）"""
+    if not hex_str:
+        return ""
+    try:
+        return bytes.fromhex(hex_str).decode("ascii", errors="ignore")
+    except ValueError:
+        return ""
+
+
+def hex_to_utf8(hex_str: str) -> str:
+    """将 16 进制字符串解码为 UTF-8（对应 rooms.js 的 hexToUtf8）"""
+    if not hex_str:
+        return ""
+    try:
+        return bytes.fromhex(hex_str).decode("utf-8", errors="ignore")
+    except ValueError:
+        return ""
+
+
+def hex_to_utf16(hex_str: str) -> str:
+    """
+    将 16 进制字符串解码为 UTF-16（对应 rooms.js 的 hexToUtf16）。
+    约定：输入按 2 字节 1 个字符处理，末尾 0000 表示结束。
+    """
+    if not hex_str:
+        return ""
+    try:
+        raw = bytes.fromhex(hex_str)
+        # UTF-16 LE（JS 端使用 little-endian 约定），末尾 0000 截断
+        return raw.decode("utf-16-le", errors="ignore").split("\x00", 1)[0]
+    except ValueError:
+        return ""
+
+
+def hex_to_int(hex_str: str) -> int | None:
+    """将 16 进制字符串解析为整数（对应 rooms.js 的 hexToInt），失败返回 None"""
+    if not hex_str:
+        return None
+    try:
+        return int(hex_str, 16)
+    except (ValueError, TypeError):
+        return None
+
+
+def sanitize_room_data(raw: dict[str, Any]) -> dict[str, Any]:
+    """
+    根据 advertiseData 识别真实游戏并修正房间数据（参照 rooms.js 的 sanitizeData）。
+    修改并返回 raw（dict 本身），兼容前端字段。
+    """
+    content_id = str(raw.get("contentId") or raw.get("content_id") or "").upper()
+    if content_id != UNKNOWN_ID:
+        return raw
+
+    advertise = str(raw.get("advertiseData") or raw.get("advertise_data") or "")
+
+    # 1) Dragon Ball FighterZ
+    if advertise == "ffff0000":
+        raw["contentId"] = "0100a250097f0000"
+        return raw
+
+    # 2) Rocket League: JSON 开头/结尾为 7b / 7d
+    if advertise.startswith("7b") and advertise.endswith("7d"):
+        raw["contentId"] = "01005ee0036ec000"
+        ascii_data = hex_to_ascii(advertise)
+        try:
+            parsed = json.loads(ascii_data)
+            owner = str(parsed.get("OwnerName") or "").strip()
+            if owner:
+                raw["hostPlayerName"] = owner
+        except (json.JSONDecodeError, AttributeError):
+            pass
+        return raw
+
+    # 3) Monster Hunter Rise
+    split = advertise.split("00000004")
+    first_part = split[0] if split else ""
+    is_mhr = ("0000000008100000" in first_part and "8b9000" in first_part) and len(split) >= 3
+    if is_mhr:
+        raw["contentId"] = "0100b04011742000"
+        players_hex = split[1]
+        ranks_hex = split[2]
+
+        nodes = raw.get("nodes") if isinstance(raw.get("nodes"), list) else []
+        new_nodes: list[dict[str, Any]] = []
+
+        index = 0
+        cursor = 0
+        while True:
+            if index >= len(nodes):
+                break
+            node = nodes[index] if isinstance(nodes[index], dict) else {}
+
+            # 对应 JS: hexToInt(players.substr(cursor, 4)) * 2
+            size_hex = players_hex[cursor:cursor + 4] if cursor + 4 <= len(players_hex) else ""
+            reading_size = (hex_to_int(size_hex) or 0) * 2
+            if reading_size > 0:
+                cursor += 4
+                name_hex = players_hex[cursor:cursor + reading_size]
+                cursor += reading_size
+                character_name = hex_to_utf16(f"{name_hex}0000")
+
+                # 对应 JS: hexToInt(ranks.substr(index * 4, 4))
+                rank_hex = ranks_hex[index * 4: index * 4 + 4] if index * 4 + 4 <= len(ranks_hex) else ""
+                rank = hex_to_int(rank_hex) or 0
+
+                new_nodes.append({
+                    "ip": node.get("ip"),
+                    "nodeId": node.get("nodeId") or node.get("node_id"),
+                    "isConnected": node.get("isConnected") or node.get("is_connected"),
+                    "playerName": node.get("playerName") or node.get("player_name"),
+                    "characterName": character_name,
+                    "rank": rank,
+                })
+            else:
+                break
+            index += 1
+
+        raw["nodes"] = new_nodes
+
+        # 更新 hostPlayerName
+        host_character = new_nodes[0].get("characterName") if new_nodes else ""
+        old_host = str(raw.get("hostPlayerName") or raw.get("host_player_name") or "").strip()
+        if old_host and host_character and host_character != old_host:
+            raw["hostPlayerName"] = f"{host_character} ({old_host})"
+        return raw
+
+    # 4) Monster Hunter Stories 2: Wings of Ruin
+    is_mhs2 = ("0000000008100000" in first_part and "0a0000" in first_part)
+    if is_mhs2:
+        raw["contentId"] = "0100e21011446000"
+        return raw
+
+    # 5) Minecraft
+    mc_name = ""
+    if len(advertise) > 32:
+        mc_name = hex_to_utf8(advertise[32:])
+    host = str(raw.get("hostPlayerName") or raw.get("host_player_name") or "").strip()
+    if mc_name and mc_name == host:
+        raw["contentId"] = "0100d71004694000"
+
+    return raw
+
 
 
 def get_game_info(content_id: str, titles_map: dict[str, str]) -> dict[str, Any]:
@@ -2934,24 +3090,36 @@ SCAN_EXECUTOR = ThreadPoolExecutor(
 
 def normalize_room(raw: Any, server: dict[str, Any], index: int,
                   titles_map: dict[str, str]) -> dict[str, Any]:
-    raw = raw if isinstance(raw, dict) else {}
+    """将原始房间数据规范化为统一格式（含 advertiseData 识别真实游戏）"""
+    raw = dict(raw) if isinstance(raw, dict) else {}
+
+    # 1) 先根据 advertiseData 识别真实游戏（参照 rooms.js sanitizeData）
+    raw = sanitize_room_data(raw)
+
     content_id = str(raw.get("contentId") or raw.get("content_id") or "").upper()
     g_info = get_game_info(content_id, titles_map)
+
     nodes = raw.get("nodes") if isinstance(raw.get("nodes"), list) else []
     players: list[str] = []
     for node in nodes:
         if isinstance(node, dict):
-            name = str(node.get("playerName") or node.get("player_name") or "").strip()
+            # MH 房间节点额外带 characterName，优先展示"角色名 (玩家名)"
+            pname = str(node.get("playerName") or node.get("player_name") or "").strip()
+            cname = str(node.get("characterName") or node.get("character_name") or "").strip()
+            if cname and cname != pname:
+                display = f"{cname} ({pname})" if pname else cname
+            else:
+                display = pname or "未命名玩家"
         else:
-            name = str(node).strip()
-        if not name:
-            name = "未命名玩家"
-        players.append(name)
+            display = str(node).strip() or "未命名玩家"
+        players.append(display)
+
     host = str(raw.get("hostPlayerName") or raw.get("host_player_name") or "").strip()
     if not host:
         host = players[0] if players else "未知玩家"
     elif not players:
         players.append(host)
+
     node_count = int_or_zero(raw.get("nodeCount", raw.get("node_count", len(players))))
     node_max = int_or_zero(raw.get("nodeCountMax", raw.get("node_count_max", 0)))
     return {
@@ -2967,7 +3135,9 @@ def normalize_room(raw: Any, server: dict[str, Any], index: int,
         "node_count": node_count or len(players),
         "node_count_max": node_max,
         "players": players,
+        "raw": raw,  # ★ 新增：保留 sanitize 后的原始房间数据，供 /api/room-raw 使用
     }
+
 
 
 def base_result(server: dict[str, Any]) -> dict[str, Any]:
@@ -3070,6 +3240,27 @@ def scan_server(server: dict[str, Any], force: bool = False) -> tuple[dict[str, 
     # 房间保活：5 次扫描内出现过则保留，连续 5 次未扫到再消失
     result["rooms"] = apply_room_keepalive(server["id"], list(merged.values()))
     result["room_count"] = len(result["rooms"])
+
+    # ★ 维护 raw 信息缓存（供 /api/room-raw 查询）
+    _now = time.time()
+    sid_key = server["id"]
+    with ROOM_RAW_CACHE_LOCK:
+        seen_ids = set()
+        for room in result["rooms"]:
+            rid = str(room.get("id") or "")
+            raw = room.get("raw")
+            if rid and isinstance(raw, dict):
+                ROOM_RAW_CACHE[(sid_key, rid)] = {"raw": room, "last_seen": _now}
+                seen_ids.add(rid)
+        # 过期清理
+        expired = [
+            k for k, v in ROOM_RAW_CACHE.items()
+            if k[0] == sid_key and v["last_seen"] + ROOM_RAW_CACHE_TTL < _now
+        ]
+        for k in expired:
+            if k not in seen_ids:
+                del ROOM_RAW_CACHE[k]
+
     result["scanner_error"] = scanner_error
     result["detection"] = "active-udp-scan+monitor-api"
 
@@ -3628,6 +3819,49 @@ class MonitorHandler(BaseHTTPRequestHandler):
                     body, headers, status = make_json_response(data, status=500)
                 self._send(body, headers, status)
                 return
+
+
+            if path == "/api/room-raw":
+                try:
+                    server_id = str(query.get("server_id", "")).strip()
+                    room_id = str(query.get("room_id", "")).strip()
+                    if not server_id or not room_id:
+                        body, headers, status = make_json_response(
+                            {"ok": False, "error": "缺少 server_id 或 room_id"}, status=400)
+                        self._send(body, headers, status)
+                        return
+
+                    server = ctx.get_server(server_id)
+                    if not server:
+                        body, headers, status = make_json_response(
+                            {"ok": False, "error": "未找到服务器"}, status=404)
+                        self._send(body, headers, status)
+                        return
+
+                    with ROOM_RAW_CACHE_LOCK:
+                        cached_item = ROOM_RAW_CACHE.get((server_id, room_id))
+
+                    raw_info = {
+                        "server_id": server_id,
+                        "server_name": server.get("name", ""),
+                        "room_id": room_id,
+                        "raw": None,
+                        "source": "cache" if cached_item else "empty",
+                    }
+                    if cached_item and isinstance(cached_item.get("raw"), dict):
+                        raw_info["raw"] = cached_item["raw"]
+
+                    body, headers, status = make_json_response(
+                        {"ok": True, "room_raw": raw_info})
+                    headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
+                except Exception as e:
+                    err(f"[API] /api/room-raw 异常: {e}")
+                    body, headers, status = make_json_response(
+                        {"ok": False, "error": str(e)}, status=500)
+                self._send(body, headers, status)
+                return
+
+
 
             if path == "/api/browser-download":
                 self._browser_download_started = False

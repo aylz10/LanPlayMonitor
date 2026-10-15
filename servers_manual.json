@@ -1,0 +1,20 @@
+[
+  {
+    "id": "manual_1fe9b63b",
+    "name": "yordon",
+    "host": "yordon.cn",
+    "port": 11451,
+    "type": "graphql",
+    "region": "🇨🇳 中国 浙江 嘉兴",
+    "is_manual": true
+  },
+  {
+    "id": "manual_1fe9b63c",
+    "name": "shanghai",
+    "host": "47.102.121.212",
+    "port": 11451,
+    "type": "graphql",
+    "region": "🇨🇳 中国 上海",
+    "is_manual": true
+  }
+]

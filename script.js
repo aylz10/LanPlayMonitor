@@ -6009,10 +6009,16 @@ html:not(.dark) {
       let hostHtml = `<span class="room-host-meta"><span class="host-icon-fixed">🏠</span><span class="host-name ellipsis">${esc(hostName)}</span></span>`;
 
       const roomId = esc(room.id || "");
+      const serverId = esc(room.server_id || "");
       const gameKey = gameVal; // 已是最终标签（游戏名 / 标题 ID / 未知游戏）
+      // ★★★ 新增：raw 信息按钮 ★★★
+      const infoBtnHtml = `<button type="button" class="room-info-btn" data-room-id="${roomId}" data-server-id="${serverId}" title="查看 raw 信息"
+        style="position:absolute;right:10px;top:50%;transform:translateY(-50%);width:34px;height:34px;border-radius:50%;border:1px solid var(--line);background:var(--card);color:var(--ink);font-size:16px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(0,0,0,.12);">🧾</button>`;
+
       // ★★★ 修复：通过 display 参数控制初始显示状态，避免闪现 ★★★
       const displayStyle = display === "none" ? "display:none;" : "";
-      return `<div class="room-item" data-game="${esc(gameVal)}" data-game-key="${esc(gameKey)}" data-room-id="${roomId}" style="${displayStyle}">
+      return `<div class="room-item" data-game="${esc(gameVal)}" data-game-key="${esc(gameKey)}" data-room-id="${roomId}" style="${displayStyle};position:relative;padding-right:44px;">
+    ${infoBtnHtml}
     <div class="room-top">
       <div class="room-game-left">
         ${iconHtml}
@@ -6029,6 +6035,80 @@ html:not(.dark) {
     <div class="room-players">${players.map((p) => `<span class="player">${esc(p)}</span>`).join("")}</div>
   </div>`;
     }
+
+
+
+    // ============================================================
+    // 房间 raw 信息弹窗
+    // ============================================================
+    function ensureRoomInfoModal() {
+      let modal = document.getElementById("roomInfoModal");
+      if (modal) return modal;
+
+      modal = document.createElement("div");
+      modal.id = "roomInfoModal";
+      modal.className = "log-modal";
+      modal.innerHTML = `
+    <div class="log-box" style="max-width:560px;width:calc(100% - 32px);">
+      <div class="log-header">
+        <span>🧾 房间 raw 信息</span>
+        <button id="closeRoomInfoBtn" class="log-close">✕</button>
+      </div>
+      <div id="roomInfoContent" class="log-content" style="white-space:pre-wrap;font-size:12px;max-height:70vh;"></div>
+    </div>
+  `;
+      document.body.appendChild(modal);
+
+      const closeBtn = modal.querySelector("#closeRoomInfoBtn");
+      closeBtn.addEventListener("click", () => modal.classList.remove("open"));
+      modal.addEventListener("click", (e) => {
+        if (e.target === modal) modal.classList.remove("open");
+      });
+      return modal;
+    }
+
+    async function showRoomRawInfo(serverId, roomId) {
+      const modal = ensureRoomInfoModal();
+      const content = modal.querySelector("#roomInfoContent");
+      content.textContent = "正在加载 raw 信息...";
+      modal.classList.add("open");
+
+      try {
+        const url = `/api/room-raw?server_id=${encodeURIComponent(serverId)}&room_id=${encodeURIComponent(roomId)}`;
+        const r = await fetch(url, { cache: "no-store" });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok || !d.ok) throw new Error(d.error || "请求失败");
+
+        const raw = (d.room_raw && d.room_raw.raw) || {};
+        const lines = [
+          `服务器: ${(d.room_raw && d.room_raw.server_name) || ""}`,
+          `房间 ID: ${(d.room_raw && d.room_raw.room_id) || roomId}`,
+          `数据来源: ${(d.room_raw && d.room_raw.source) || "unknown"}`,
+          "",
+          "debug:",
+          JSON.stringify(raw, null, 2),
+        ];
+        content.textContent = lines.join("\n");
+        content.scrollTop = 0;
+      } catch (e) {
+        content.textContent = "加载 raw 信息失败: " + e.message;
+      }
+    }
+
+    document.addEventListener("click", (e) => {
+      const t = e.target.closest(".room-info-btn");
+      if (!t) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const roomId = t.dataset.roomId || "";
+      const serverId = t.dataset.serverId || "";
+      if (!roomId || !serverId) {
+        showToast("❌ 缺少房间或服务标识", 1500, false);
+        return;
+      }
+      showRoomRawInfo(serverId, roomId);
+    }, true);
+
 
     // ===== 新消息数字角标相关函数 =====
     function normalizeUnreadCount(v) {

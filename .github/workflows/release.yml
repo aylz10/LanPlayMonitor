@@ -70,6 +70,22 @@ jobs:
           echo "$KEYSTORE_BASE64" | base64 -d > /home/runner/work/${{ github.event.repository.name }}/${{ github.event.repository.name }}/com.lanplay.monitor.keystore
           chmod 600 /home/runner/work/${{ github.event.repository.name }}/${{ github.event.repository.name }}/com.lanplay.monitor.keystore
           echo "Keystore decoded successfully."
+          
+      - name: Apply signing secrets if provided
+        env:
+          STORE_PASS: ${{ secrets.storepass }}
+          KEY_PASS: ${{ secrets.keypass }}
+          ALIAS: ${{ secrets.alias }}
+        run: |
+          if [ -n "$STORE_PASS" ] || [ -n "$KEY_PASS" ] || [ -n "$ALIAS" ]; then
+            sed -i "s/^android.keystore_storepass = .*/android.keystore_storepass = $STORE_PASS/" buildozer.spec
+            sed -i "s/^android.keystore_keypass = .*/android.keystore_keypass = $KEY_PASS/" buildozer.spec
+            sed -i "s/^android.keystore_alias = .*/android.keystore_alias = $ALIAS/" buildozer.spec
+            echo "Signing secrets applied to buildozer.spec."
+            grep "android.keystore" buildozer.spec
+          else
+            echo "No signing secrets provided. Keeping default values in buildozer.spec."
+          fi
 
       # 7. 更新版本号
       - name: Update version in buildozer.spec
