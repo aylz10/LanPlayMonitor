@@ -1090,8 +1090,8 @@ html.dark .server-group.dragging {
 html.dark .server-head:hover{background:rgba(255,255,255,.03)}
 @media (prefers-color-scheme: dark){:root:not(.light) .server-head:hover{background:rgba(255,255,255,.03)}}
 
-/* 移到顶部按钮 */
 /* 移到顶部按钮：卡片右下角，参考 unread-indicator 的绝对定位 */
+/* 默认隐藏，仅在排序模式下显示 */
 .move-top-btn {
   position: absolute;
   bottom: 6px;
@@ -1102,7 +1102,7 @@ html.dark .server-head:hover{background:rgba(255,255,255,.03)}
   border-radius: 50%;
   background: transparent;
   color: currentColor;
-  display: flex;
+  display: none; /* 默认隐藏 */
   align-items: center;
   justify-content: center;
   cursor: pointer;
@@ -1111,6 +1111,10 @@ html.dark .server-head:hover{background:rgba(255,255,255,.03)}
   touch-action: manipulation;
   pointer-events: auto;
   z-index: 3;
+}
+/* 排序模式下显示 move-top-btn */
+.server-group.sort-mode .move-top-btn {
+  display: flex;
 }
 /* 卡片右下角预留占位，避免按钮遮挡 server-stats / 延迟 等内容 */
 .move-top-btn-spacer {
@@ -1140,6 +1144,17 @@ html.dark .move-top-btn:hover {
 .move-top-btn:hover svg {
   opacity: 1;
 }
+/* 排序模式按钮激活态 */
+.icon-btn.sort-mode-active {
+  background: var(--cyan);
+  color: #fff;
+  box-shadow: 0 2px 8px rgba(25,200,174,.35);
+}
+html.dark .icon-btn.sort-mode-active {
+  background: var(--cyan);
+  color: #fff;
+}
+
 
 
 
@@ -3821,6 +3836,7 @@ html:not(.dark) {
       </button>
       <button id="openLogModalBtn" class="icon-btn" title="查看运行日志">💻</button>
       <button id="openAddModalBtn" class="icon-btn" title="添加自定义服务器">➕</button>
+      <button id="sortModeBtn" class="icon-btn" title="进入/退出排序模式">⇅</button>
       <button id="resetOrderBtn" class="icon-btn" title="恢复默认排序">🔄</button>
       <button id="dpiToggleBtn" class="icon-btn" title="调节界面缩放 (DPI)">🔍</button>
       <button id="manualUpdateBtn" class="icon-btn" title="点击检查并更新前后端">⬆️</button>
@@ -4362,6 +4378,7 @@ html:not(.dark) {
       frozenCardId: null,
       unreadStatus: {},
       autoExpand: false,
+      sortMode: false,   // 排序模式开关
       onlineMembers: [],
       onlineCount: 0,
       presenceReady: false,
@@ -5191,6 +5208,7 @@ html:not(.dark) {
       "onlineMembersBtn",
       "openLogModalBtn",
       "openAddModalBtn",
+      "sortModeBtn",
       "resetOrderBtn",
       "dpiToggleBtn",
       "manualUpdateBtn",
@@ -5539,6 +5557,28 @@ html:not(.dark) {
     }
 
     initNavIconReorder();
+    
+    
+    // ===== 排序模式切换 =====
+    const sortModeBtn = document.getElementById("sortModeBtn");
+    if (sortModeBtn) {
+      sortModeBtn.addEventListener("click", () => {
+        state.sortMode = !state.sortMode;
+        // 更新按钮激活态
+        sortModeBtn.classList.toggle("sort-mode-active", state.sortMode);
+        sortModeBtn.title = state.sortMode ? "退出排序模式" : "进入/退出排序模式";
+        // 同步所有已渲染卡片的 sort-mode class
+        document.querySelectorAll(".server-group").forEach((el) => {
+          el.classList.toggle("sort-mode", state.sortMode);
+        });
+        showToast(
+          state.sortMode ? "📋 排序模式已开启，点击卡片右下角「↑」可移到最顶" : "✅ 已退出排序模式",
+          1800,
+          true
+        );
+      });
+    }
+
 
     // ===== 恢复默认排序 =====
     const resetModal = document.getElementById("resetOrderModal");
@@ -13658,7 +13698,7 @@ html:not(.dark) {
             : "";
 
           const div = document.createElement("div");
-          div.className = `server-group ${isOpen}`;
+          div.className = `server-group ${isOpen} ${state.sortMode ? 'sort-mode' : ''}`;
           div.dataset.id = s.id;
           div.innerHTML = `
             ${actionsHtml}
