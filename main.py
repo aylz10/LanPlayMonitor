@@ -4708,7 +4708,7 @@ def main() -> None:
 
     start_remote_download_thread()
 
-    port = int(os.getenv("PORT", "11451"))
+    port = int(os.getenv("PORT", "11452"))
     server_address = ("0.0.0.0", port)
     httpd = ThreadingHTTPServer(server_address, MonitorHandler)
     # LogCapturer 会统一追加“更新于 HH:MM:SS”，正文不再重复写完整时间。

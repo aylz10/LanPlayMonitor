@@ -58,7 +58,7 @@ p4a.gradle_dependencies = gradle:7.6.4, androidx.webkit:webkit:1.9.0
 p4a.gradle_options = -Dorg.gradle.java.home=/usr/lib/jvm/java-17-openjdk-amd64
 # ===== WebView 配置 =====
 p4a.bootstrap = webview
-p4a.port = 11451
+p4a.port = 11452
 # ========================
 
 # 禁止构建时将 py 编译为 pyc，APK 内保留 py 源码
