@@ -1090,6 +1090,47 @@ html.dark .server-group.dragging {
 html.dark .server-head:hover{background:rgba(255,255,255,.03)}
 @media (prefers-color-scheme: dark){:root:not(.light) .server-head:hover{background:rgba(255,255,255,.03)}}
 
+/* 移到顶部按钮 */
+.move-top-btn {
+  flex-shrink: 0;
+  align-self: center;
+  width: 36px;
+  height: 36px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: currentColor;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.2s ease, opacity 0.2s ease;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+.move-top-btn:hover {
+  background: rgba(125, 175, 210, 0.12);
+}
+html.dark .move-top-btn:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+.move-top-btn:active {
+  background: rgba(25, 200, 174, 0.22);
+  transform: scale(0.94);
+}
+.move-top-btn svg {
+  width: 18px;
+  height: 18px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 2;
+  opacity: 0.72;
+}
+.move-top-btn:hover svg {
+  opacity: 1;
+}
+
+
 .server-status-dot{width:12px;height:12px;border-radius:50%;flex-shrink:0;position:relative;align-self:center;display:block;margin:0}
 .server-status-dot.online{background:#19c8ae;box-shadow:0 0 0 4px rgba(25,200,174,.15);animation:server-pulse-online 2s ease-in-out infinite}
 .server-status-dot.offline{background:#dc3048;box-shadow:0 0 0 4px rgba(220,48,72,.12);animation:none}
@@ -6754,6 +6795,37 @@ html:not(.dark) {
           saveCurrentOrder();
         }
       });
+    }
+    
+    function moveServerToTop(serverId) {
+      const list = document.getElementById("serverList");
+      if (!list) return;
+
+      const card = list.querySelector(`.server-group[data-id="${CSS.escape(serverId)}"]`);
+      if (!card) return;
+
+      // 直接移到列表第一个
+      list.insertBefore(card, list.firstChild);
+
+      // 更新 state.servers 顺序，保持一致
+      const ids = Array.from(list.querySelectorAll(".server-group")).map(
+        (el) => el.dataset.id
+      );
+
+      const map = {};
+      state.servers.forEach((s) => (map[s.id] = s));
+
+      const nextServers = ids.map((id) => map[id]).filter(Boolean);
+      // 如果存在本地顺序中尚未出现在 DOM 的服务器，也补在后面，避免丢项
+      state.servers.forEach((s) => {
+        if (!nextServers.includes(s)) nextServers.push(s);
+      });
+
+      state.servers = nextServers;
+      state._defaultOrder = state.servers.map((s) => ({ id: s.id }));
+
+      // 保存本地顺序
+      saveCurrentOrder();
     }
 
     function saveCurrentOrder() {
@@ -13551,6 +13623,19 @@ html:not(.dark) {
                 ? String(unreadCount)
                 : "";
 
+
+          const moveTopBtnHtml = `
+            <button class="move-top-btn" data-server-id="${s.id}" title="移到最顶">
+              <svg viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M5 12l7-7 7 7"></path>
+                <path d="M12 5v14"></path>
+              </svg>
+            </button>
+          `;
+
+
+
+
           const actionsHtml = s.is_manual
             ? `
         <div class="server-actions">
@@ -13580,6 +13665,7 @@ html:not(.dark) {
               <div class="stat-item rooms"><span>房间</span><b>${s.room_count || 0}</b></div>
               <div class="stat-item latency"><span>延迟</span>${latencyHTML(s)}</div>
             </div>
+            ${moveTopBtnHtml}
           </div>
           <div class="server-body">
             <div class="body-inner">
@@ -13608,6 +13694,16 @@ html:not(.dark) {
 
           // 拖拽排序
           initDragAndDrop(div, s);
+
+          // 点击“移到最顶”
+          const moveTopBtn = div.querySelector(".move-top-btn");
+          if (moveTopBtn) {
+            moveTopBtn.addEventListener("click", (e) => {
+              e.stopPropagation();
+              moveServerToTop(s.id);
+            });
+          }
+
 
           // 滑动操作（仅自定义服务器）
           if (s.is_manual) {
