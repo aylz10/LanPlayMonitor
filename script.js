@@ -1091,9 +1091,11 @@ html.dark .server-head:hover{background:rgba(255,255,255,.03)}
 @media (prefers-color-scheme: dark){:root:not(.light) .server-head:hover{background:rgba(255,255,255,.03)}}
 
 /* 移到顶部按钮 */
+/* 移到顶部按钮：卡片右下角，参考 unread-indicator 的绝对定位 */
 .move-top-btn {
-  flex-shrink: 0;
-  align-self: center;
+  position: absolute;
+  bottom: 6px;
+  right: 8px;
   width: 36px;
   height: 36px;
   border: 0;
@@ -1107,6 +1109,15 @@ html.dark .server-head:hover{background:rgba(255,255,255,.03)}
   transition: background 0.2s ease, opacity 0.2s ease;
   -webkit-tap-highlight-color: transparent;
   touch-action: manipulation;
+  pointer-events: auto;
+  z-index: 3;
+}
+/* 卡片右下角预留占位，避免按钮遮挡 server-stats / 延迟 等内容 */
+.move-top-btn-spacer {
+  flex-shrink: 0;
+  align-self: center;
+  width: 36px;
+  height: 36px;
 }
 .move-top-btn:hover {
   background: rgba(125, 175, 210, 0.12);
@@ -1129,6 +1140,7 @@ html.dark .move-top-btn:hover {
 .move-top-btn:hover svg {
   opacity: 1;
 }
+
 
 
 .server-status-dot{width:12px;height:12px;border-radius:50%;flex-shrink:0;position:relative;align-self:center;display:block;margin:0}
@@ -13636,6 +13648,7 @@ html:not(.dark) {
 
 
 
+
           const actionsHtml = s.is_manual
             ? `
         <div class="server-actions">
@@ -13648,32 +13661,33 @@ html:not(.dark) {
           div.className = `server-group ${isOpen}`;
           div.dataset.id = s.id;
           div.innerHTML = `
-        ${actionsHtml}
-        <div class="server-card-inner">
-          <div class="server-head">
-            <div class="server-status-dot ${dot}"></div>
-            <div class="server-info">
-              ${nameHtml}
-              ${addrHtml}
-              ${buildServerTagsHtml(regionHtml, typeBadgeHtml)}
-              <div class="server-detail"></div>
+            ${actionsHtml}
+            <div class="server-card-inner">
+              <div class="server-head">
+                <div class="server-status-dot ${dot}"></div>
+                <div class="server-info">
+                  ${nameHtml}
+                  ${addrHtml}
+                  ${buildServerTagsHtml(regionHtml, typeBadgeHtml)}
+                  <div class="server-detail"></div>
+                </div>
+                <span class="unread-indicator" data-server-id="${s.id}" style="display: ${indicatorStyle};">${indicatorText}</span>
+                <div class="server-stats">
+                  <div class="stat-item online"><span>在线</span><b>${s.online || 0}</b></div>
+                  <div class="stat-item idle"><span>空闲</span><b>${s.idle || 0}</b></div>
+                  <div class="stat-item rooms"><span>房间</span><b>${s.room_count || 0}</b></div>
+                  <div class="stat-item latency"><span>延迟</span>${latencyHTML(s)}</div>
+                </div>
+              </div>
+              <div class="server-body">
+                <div class="body-inner">
+                  ${newRoomsHtml}
+                </div>
+              </div>
+              ${moveTopBtnHtml}
             </div>
-            <span class="unread-indicator" data-server-id="${s.id}" style="display: ${indicatorStyle};">${indicatorText}</span>
-            <div class="server-stats">
-              <div class="stat-item online"><span>在线</span><b>${s.online || 0}</b></div>
-              <div class="stat-item idle"><span>空闲</span><b>${s.idle || 0}</b></div>
-              <div class="stat-item rooms"><span>房间</span><b>${s.room_count || 0}</b></div>
-              <div class="stat-item latency"><span>延迟</span>${latencyHTML(s)}</div>
-            </div>
-            ${moveTopBtnHtml}
-          </div>
-          <div class="server-body">
-            <div class="body-inner">
-              ${newRoomsHtml}
-            </div>
-          </div>
-        </div>
-      `;
+          `;
+
           ensureErrorBadge(div, errText);
 
           // 绑定事件：复制服务器名/地址

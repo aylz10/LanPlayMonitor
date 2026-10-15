@@ -361,7 +361,7 @@ MAX_JSON_BODY_BYTES = 2 * 1024 * 1024
 GC_INTERVAL = max(30, int(os.getenv("GC_INTERVAL", "120")))
 
 # 可选代理前缀（为空则直连，失败自动重试直连）# 例：https://v6.gh-proxy.org 或 https://gh-proxy.com
-REMOTE_UPDATE_PROXY = os.getenv("REMOTE_UPDATE_PROXY", "ghfast.top").strip().rstrip("/")
+REMOTE_UPDATE_PROXY = os.getenv("REMOTE_UPDATE_PROXY", "https://ghfast.top").strip().rstrip("/")
 # 远程资源原始地址（直连）；实际请求时若 REMOTE_UPDATE_PROXY 非空则优先走 代理/原始URL
 REMOTE_CHINESE_DB_URL = "https://raw.githubusercontent.com/jieluojun/LanPlayMonitor/refs/heads/main/chinese_db.json"
 REMOTE_SERVERS_URL = "https://raw.githubusercontent.com/jieluojun/LanPlayMonitor/refs/heads/main/servers.json"
