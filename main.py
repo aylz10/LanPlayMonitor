@@ -1773,6 +1773,7 @@ def remote_download_worker():
         time.sleep(REMOTE_DOWNLOAD_INTERVAL)
 
 
+
 # ============================================================================
 # SECTION 4.5 · 前后端远程更新（哈希对比手动更新 + 启动时前端缺失自动下载）
 # ============================================================================
@@ -2893,16 +2894,46 @@ class AppContext:
             self.servers_by_id = {s["id"]: s for s in new_servers}
 
             current_ids = set(self.servers_by_id.keys())
+
+            # 收集需要强制重建的 id（配置关键字段发生了变化）
+            rebuilt_ids: set[str] = set()
+
+            # 第一步：关闭并删除所有"已不存在"的旧扫描器
             for sid in [k for k in self.scanners if k not in current_ids]:
                 self.scanners[sid].close()
                 del self.scanners[sid]
+                rebuilt_ids.add(sid)  # 已移除的 id 也需要清缓存
+                # info(f"[refresh_config] ✅ 已移除的 id :{sid}")
+
+            # 第二步：检查 id 存在但 host/port/type 变化的情况
+            for s in self.servers:
+                sid = s["id"]
+                old_scanner = self.scanners.get(sid)
+                if old_scanner:
+                    old_srv = old_scanner.server
+                    if (old_srv.get("host") != s.get("host")
+                            or old_srv.get("port") != s.get("port")
+                            or old_srv.get("type") != s.get("type")):
+                        # 关键字段变化 → 旧扫描器的 socket/状态已失效，必须重建
+                        old_scanner.close()
+                        del self.scanners[sid]
+                        rebuilt_ids.add(sid)
+                        # info(f"[refresh_config] ✅ 旧扫描器的 socket/状态已失效，必须重建的 id :{sid}")
+
+            # 第三步：为所有缺失的（新建或刚被重建的）扫描器创建实例
             for s in self.servers:
                 if s["id"] not in self.scanners:
                     self.scanners[s["id"]] = ActiveRoomScanner(s)
+                    # info(f"[refresh_config] ✅ 为所有缺失的（新建或刚被重建的）扫描器创建实例的 id :{s['id']}")
 
-            # 服务器被删除后，同步清掉它遗留的房间保活桶与扫描缓存
+            # 第四步：清理已删除或已重建的服务器对应的房间保活桶与 raw 缓存
             prune_room_keepalive(current_ids)
-
+            if rebuilt_ids:
+                with ROOM_RAW_CACHE_LOCK:
+                    for k in [k for k in ROOM_RAW_CACHE if k[0] in rebuilt_ids]:
+                        del ROOM_RAW_CACHE[k]
+                info("[refresh_config] ✅ 清理已删除或已重建的服务器对应的房间保活桶与 raw 缓存")
+            
             with _download_status_lock:
                 self.download_status = dict(_download_status)
 
